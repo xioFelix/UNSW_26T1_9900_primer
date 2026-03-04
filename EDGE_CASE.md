@@ -1,35 +1,25 @@
 # Edge Case Documentation
 
-## Edge Case: Optional Mark Field When Creating Students
+## 1. Optional Mark Field (POST /students)
 
-### 1) The Edge Case Identified
+The spec says `mark` is optional when creating a student, but the database expects an integer. If no mark is provided, I default it to `0` so the insert doesn't fail. This also keeps `/stats` calculations simple since every student has a numeric mark.
 
-When creating a new student via `POST /students`, the specification states that the `mark` field is optional. However, the database schema requires a mark value (INTEGER type). This creates an edge case:
-
-**What should happen when a student is created without providing a mark?**
-
-Possible scenarios:
-- Student just enrolled, hasn't received any marks yet
-- Mark will be added later through an update operation
-- Frontend might not send the mark field at all
-
-### 2) How I Addressed This
-
-**Solution:** Default mark value to 0 when not provided.
-
-**Implementation in `backend/app.py` (lines 45):**
 ```python
-mark = student_data.get("mark", 0)  # Default mark to 0 if not provided
+mark = student_data.get("mark", 0)
 ```
 
-**Rationale:**
-- **Database compatibility**: Ensures we always pass a valid integer to the database
-- **Semantic meaning**: A mark of 0 indicates "no mark assigned yet" rather than causing an error
-- **Flexibility**: Allows creation of student records before marks are available
-- **Easy updates**: Mark can be updated later via `PUT /students/{id}`
-- **Stats calculation**: The `/stats` endpoint correctly handles students with 0 marks
+## 2. Empty Database Stats (GET /stats)
 
-**Alternative approaches considered but rejected:**
-- Using `NULL` in database: Would require schema changes
-- Returning error 404: Too restrictive, prevents creating students without marks
-- Using -1 as sentinel: Less intuitive than 0 for "no mark"
+When there are no students, calling `min()`, `max()` on an empty list raises an error, and dividing by zero for `average` crashes. I handle this by returning all values as `0` with status 200 when the student list is empty.
+
+## 3. Missing or Empty Required Fields (POST /students)
+
+The request body might be `null`, missing `name`/`course` keys, or have empty strings. I check for all three cases and return 404 with an error message if any of them occur.
+
+## 4. Non-existent Student (PUT/DELETE /students/{id})
+
+For PUT, I check if the student exists before updating and return 404 if not found. For DELETE, I check the return value from the database and return 404 if nothing was deleted.
+
+## 5. Partial Updates (PUT /students/{id})
+
+The spec doesn't say whether all fields are required on update. I allow partial updates where only the provided fields are changed and the rest keep their current values, so the client doesn't have to resend the entire object.
